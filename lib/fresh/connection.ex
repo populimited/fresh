@@ -64,7 +64,7 @@ defmodule Fresh.Connection do
     :keep_state_and_data
   end
 
-  def disconnected(:internal, :connect, data) do
+  def disconnected(:internal, :connect, %__MODULE__{} = data) do
     uri = URI.parse(data.uri)
 
     {http_scheme, ws_scheme} =
@@ -115,13 +115,13 @@ defmodule Fresh.Connection do
     :keep_state_and_data
   end
 
-  def connected(:info, :ping, data) do
+  def connected(:info, :ping, %__MODULE__{} = data) do
     {:ping, <<>>}
     |> send_frame(data)
     |> data_to_event()
   end
 
-  def connected(:info, message, data) do
+  def connected(:info, message, %__MODULE__{} = data) do
     case Mint.WebSocket.stream(data.connection, message) do
       {:ok, conn, responses} ->
         responses
@@ -141,7 +141,7 @@ defmodule Fresh.Connection do
     end
   end
 
-  def connected(:cast, {:request, frame}, data) do
+  def connected(:cast, {:request, frame}, %__MODULE__{} = data) do
     frame
     |> send_frame(data)
     |> data_to_event()
@@ -153,7 +153,7 @@ defmodule Fresh.Connection do
   end
 
   @impl true
-  def terminate(reason, _state, data) do
+  def terminate(reason, _state, %__MODULE__{} = data) do
     data.module.handle_terminate(reason, data.inner_state)
   end
 
@@ -163,18 +163,18 @@ defmodule Fresh.Connection do
   ###
   ### ===============================================================
 
-  defp handle_response({:status, _ref, status}, data) do
+  defp handle_response({:status, _ref, status}, %__MODULE__{} = data) do
     %__MODULE__{data | response_status: status}
   end
 
-  defp handle_response({:headers, _ref, headers}, data) do
+  defp handle_response({:headers, _ref, headers}, %__MODULE__{} = data) do
     %__MODULE__{data | response_headers: headers}
   end
 
-  defp handle_response({:done, ref}, data) do
+  defp handle_response({:done, ref}, %__MODULE__{} = data) do
     case Mint.WebSocket.new(data.connection, ref, data.response_status, data.response_headers) do
       {:ok, conn, websocket} ->
-        log(:info, :established, nil, data.opts)
+        log(:info, :established, data, data.opts)
 
         data = %__MODULE__{data | connection: conn, websocket: websocket}
 
@@ -189,11 +189,11 @@ defmodule Fresh.Connection do
     end
   end
 
-  defp handle_response({:error, _ref, reason}, data) do
+  defp handle_response({:error, _ref, reason}, %__MODULE__{} = data) do
     handle_error({:processing_failed, reason}, data)
   end
 
-  defp handle_response({:data, _ref, message}, data) do
+  defp handle_response({:data, _ref, message}, %__MODULE__{} = data) do
     if data.websocket != nil do
       case Mint.WebSocket.decode(data.websocket, message) do
         {:ok, websocket, frames} ->
@@ -213,11 +213,11 @@ defmodule Fresh.Connection do
   ###
   ### ===============================================================
 
-  defp send_frame(frames, data) when is_list(frames) do
+  defp send_frame(frames, %__MODULE__{} = data) when is_list(frames) do
     Enum.reduce(frames, data, &send_frame/2)
   end
 
-  defp send_frame(frame, data) do
+  defp send_frame(frame, %__MODULE__{} = data) do
     with {:ok, websocket, frame_data} <- Mint.WebSocket.encode(data.websocket, frame),
          data = %__MODULE__{data | websocket: websocket},
          {:ok, conn} <-
@@ -271,17 +271,17 @@ defmodule Fresh.Connection do
   ###
   ### ===============================================================
 
-  defp handle_generic_callback({:ok, inner_state}, data) do
+  defp handle_generic_callback({:ok, inner_state}, %__MODULE__{} = data) do
     %__MODULE__{data | inner_state: inner_state}
   end
 
-  defp handle_generic_callback({:reply, response, inner_state}, data) do
+  defp handle_generic_callback({:reply, response, inner_state}, %__MODULE__{} = data) do
     response
     |> send_frame(data)
     |> struct(inner_state: inner_state)
   end
 
-  defp handle_generic_callback({:close, code, reason, inner_state}, data) do
+  defp handle_generic_callback({:close, code, reason, inner_state}, %__MODULE__{} = data) do
     send_frame({:close, code, reason}, data)
     |> struct(inner_state: inner_state)
   end
@@ -292,8 +292,8 @@ defmodule Fresh.Connection do
   ###
   ### ===============================================================
 
-  defp handle_error({error_type, reason} = error, data, additional \\ []) do
-    log(:error, error_type, reason, data.opts)
+  defp handle_error({error_type, _reason} = error, %__MODULE__{} = data, additional \\ []) do
+    log(:error, error_type, data, data.opts)
 
     error
     |> data.module.handle_error(data.inner_state)
@@ -302,27 +302,27 @@ defmodule Fresh.Connection do
 
   defp handle_connection_callback(error, data, additional \\ [])
 
-  defp handle_connection_callback({:ignore, inner_state}, data, additional) do
+  defp handle_connection_callback({:ignore, inner_state}, %__MODULE__{} = data, additional) do
     %__MODULE__{data | inner_state: inner_state, reconnect: nil}
     |> struct(additional)
   end
 
-  defp handle_connection_callback({:reconnect, inner_state}, data, additional) do
+  defp handle_connection_callback({:reconnect, inner_state}, %__MODULE__{} = data, additional) do
     %__MODULE__{data | default_state: inner_state, reconnect: true}
     |> struct(additional)
   end
 
-  defp handle_connection_callback(:reconnect, data, additional) do
+  defp handle_connection_callback(:reconnect, %__MODULE__{} = data, additional) do
     %__MODULE__{data | reconnect: true}
     |> struct(additional)
   end
 
-  defp handle_connection_callback(:close, data, additional) do
+  defp handle_connection_callback(:close, %__MODULE__{} = data, additional) do
     %__MODULE__{data | reconnect: false}
     |> struct(additional)
   end
 
-  defp handle_connection_callback({:close, reason}, data, additional) do
+  defp handle_connection_callback({:close, reason}, %__MODULE__{} = data, additional) do
     %__MODULE__{data | reconnect: {false, reason}}
     |> struct(additional)
   end
@@ -345,7 +345,7 @@ defmodule Fresh.Connection do
     disconnect(data, reason)
   end
 
-  defp data_to_event(data) do
+  defp data_to_event(%__MODULE__{} = data) do
     {:keep_state, data}
   end
 
@@ -356,7 +356,7 @@ defmodule Fresh.Connection do
   ### ===============================================================
 
   defp handle_response_queue(%__MODULE__{response_queue: [head | tail]} = data) do
-    data = handle_response({:data, :fake_ref, head}, data)
+    %__MODULE__{} = data = handle_response({:data, :fake_ref, head}, data)
     handle_response_queue(%__MODULE__{data | response_queue: tail})
   end
 
@@ -370,7 +370,7 @@ defmodule Fresh.Connection do
   ###
   ### ===============================================================
 
-  defp reconnect(data) do
+  defp reconnect(%__MODULE__{} = data) do
     disconnect(data, :normal)
 
     backoff_time =
@@ -393,7 +393,7 @@ defmodule Fresh.Connection do
     {:next_state, :disconnected, data}
   end
 
-  defp disconnect(data, reason) do
+  defp disconnect(%__MODULE__{} = data, reason) do
     if data.connection do
       Mint.HTTP.close(data.connection)
     end
