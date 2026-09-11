@@ -20,6 +20,7 @@ defmodule Fresh.Connection do
     :response_status,
     :response_headers,
     :response_queue,
+    :request_queue,
     :backoff_time
   ]
 
@@ -43,6 +44,7 @@ defmodule Fresh.Connection do
       default_state: state,
       inner_state: state,
       response_queue: [],
+      request_queue: [],
       backoff_time: Option.backoff_initial(opts)
     }
 
@@ -176,7 +178,9 @@ defmodule Fresh.Connection do
       {:ok, conn, websocket} ->
         log(:info, :established, data, data.opts)
 
-        data = %__MODULE__{data | connection: conn, websocket: websocket}
+        data =
+          %__MODULE__{data | connection: conn, websocket: websocket}
+          |> flush_request_queue()
 
         data.response_status
         |> data.module.handle_connect(data.response_headers, data.inner_state)
@@ -215,6 +219,11 @@ defmodule Fresh.Connection do
 
   defp send_frame(frames, %__MODULE__{} = data) when is_list(frames) do
     Enum.reduce(frames, data, &send_frame/2)
+  end
+
+  # websocket isn't established yet (e.g. a ping tick or a send/2 call fired before the upgrade completed), queue it
+  defp send_frame(frame, %__MODULE__{websocket: nil} = data) do
+    %__MODULE__{data | request_queue: [frame | data.request_queue]}
   end
 
   defp send_frame(frame, %__MODULE__{} = data) do
@@ -364,6 +373,16 @@ defmodule Fresh.Connection do
     data
   end
 
+  defp flush_request_queue(%__MODULE__{request_queue: []} = data) do
+    data
+  end
+
+  defp flush_request_queue(%__MODULE__{request_queue: queue} = data) do
+    queue
+    |> Enum.reverse()
+    |> send_frame(%__MODULE__{data | request_queue: []})
+  end
+
   ### ===============================================================
   ###
   ###  Clean reconnect and disconnect
@@ -387,6 +406,7 @@ defmodule Fresh.Connection do
       default_state: data.default_state,
       inner_state: data.default_state,
       response_queue: [],
+      request_queue: [],
       backoff_time: round(backoff_time * 1.5)
     }
 

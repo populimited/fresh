@@ -42,6 +42,22 @@ defmodule FreshTest do
       Fresh.send(:client, {:text, "hi :)"})
       assert_receive {:data, {:text, "hi :)"}}
     end
+
+    test "Send Frame Before WebSocket Handshake Completes", state do
+      {:ok, pid} =
+        TestClient.start(
+          uri: "ws://localhost:8080/websocket",
+          state: state,
+          opts: state[:opts]
+        )
+
+      # queued behind the handshake instead of crashing the connection process
+      Fresh.send(pid, {:text, "queued before connect"})
+
+      assert_receive {:data, {:text, "queued before connect"}}
+      assert_receive {:data, {:text, "hello"}}
+      assert Process.alive?(pid)
+    end
   end
 
   describe "Test Echo Server:" do
