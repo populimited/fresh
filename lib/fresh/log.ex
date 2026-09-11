@@ -5,27 +5,27 @@ defmodule Fresh.Log do
 
   require Logger
 
-  def log(level, message, extra, opts) do
+  def log(level, message, extra, data) do
     formatted =
       message
       |> message_to_string(extra)
-      |> add_title()
+      |> add_title(data.uri)
 
     case level do
       :info ->
-        if Option.info_logging(opts) do
+        if Option.info_logging(data.opts) do
           Logger.info(formatted)
         end
 
       :error ->
-        if Option.error_logging(opts) do
+        if Option.error_logging(data.opts) do
           Logger.error(formatted)
         end
     end
   end
 
-  defp add_title(message) do
-    "(Fresh) #{message}"
+  defp add_title(message, uri) do
+    "(Fresh) [#{uri}] #{message}"
   end
 
   defp message_to_string(:established, _extra),

@@ -176,7 +176,7 @@ defmodule Fresh.Connection do
   defp handle_response({:done, ref}, %__MODULE__{} = data) do
     case Mint.WebSocket.new(data.connection, ref, data.response_status, data.response_headers) do
       {:ok, conn, websocket} ->
-        log(:info, :established, data, data.opts)
+        log(:info, :established, nil, data)
 
         data =
           %__MODULE__{data | connection: conn, websocket: websocket}
@@ -248,7 +248,7 @@ defmodule Fresh.Connection do
   end
 
   defp handle_frame({:close, code, reason}, data) do
-    log(:info, :dropping, {code, reason}, data.opts)
+    log(:info, :dropping, {code, reason}, data)
 
     code
     |> data.module.handle_disconnect(reason, data.inner_state)
@@ -302,7 +302,7 @@ defmodule Fresh.Connection do
   ### ===============================================================
 
   defp handle_error({error_type, reason} = error, %__MODULE__{} = data, additional \\ []) do
-    log(:error, error_type, reason, data.opts)
+    log(:error, error_type, reason, data)
 
     error
     |> data.module.handle_error(data.inner_state)

@@ -60,6 +60,25 @@ defmodule FreshTest do
       assert_receive {:data, {:text, "hello"}}
       assert Process.alive?(pid)
     end
+
+    test "Send Multiple Frames Before WebSocket Handshake Completes", state do
+      {:ok, pid} =
+        TestClient.start(
+          uri: "ws://localhost:8080/websocket",
+          state: state,
+          opts: state[:opts]
+        )
+
+      Fresh.send(pid, {:text, "first"})
+      Fresh.send(pid, {:text, "second"})
+      Fresh.send(pid, {:text, "third"})
+
+      assert_receive {:data, {:text, "first"}}
+      assert_receive {:data, {:text, "second"}}
+      assert_receive {:data, {:text, "third"}}
+      assert_receive {:data, {:text, "hello"}}
+      assert Process.alive?(pid)
+    end
   end
 
   describe "Test Echo Server:" do
@@ -183,7 +202,46 @@ defmodule FreshTest do
         end)
 
       assert log =~ "Casting message failed:"
+      assert log =~ "ws://localhost:8080/websocket"
       refute log =~ "%Fresh.Connection{"
+    end
+
+    test "Established Connection Logs Include the Endpoint" do
+      log =
+        capture_log(fn ->
+          TestClient.start(
+            uri: "ws://localhost:8080/websocket",
+            state: [welcome: "hi", pid: self()],
+            opts: [error_logging: false, info_logging: true]
+          )
+
+          assert_receive {:data, {:text, "hi"}}
+        end)
+
+      assert log =~ "WebSocket connection established"
+      assert log =~ "ws://localhost:8080/websocket"
+    end
+
+    test "Disabled Logging Options Produce No Log Output" do
+      log =
+        capture_log(fn ->
+          {:ok, pid} =
+            TestClient.start(
+              uri: "ws://localhost:8080/websocket",
+              state: [welcome: "hi", pid: self()],
+              opts: [error_logging: false, info_logging: false]
+            )
+
+          assert_receive {:data, {:text, "hi"}}
+
+          {:connected, %Fresh.Connection{connection: %{socket: socket}}} = :sys.get_state(pid)
+          :gen_tcp.close(socket)
+
+          Fresh.send(pid, {:text, "this will fail to send"})
+          assert_receive {:error, {:casting_failed, _reason}}
+        end)
+
+      assert log == ""
     end
   end
 end
