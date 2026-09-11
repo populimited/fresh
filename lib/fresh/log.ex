@@ -6,6 +6,12 @@ defmodule Fresh.Log do
   require Logger
 
   def log(level, message, extra, data) do
+    level =
+      case {level, extra} do
+        {:error, %Mint.TransportError{reason: :closed}} -> :info
+        _ -> level
+      end
+
     formatted =
       message
       |> message_to_string(extra)

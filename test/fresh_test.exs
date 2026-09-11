@@ -186,7 +186,7 @@ defmodule FreshTest do
         TestClient.start(
           uri: "ws://localhost:8080/websocket",
           state: [welcome: "hi", pid: self()],
-          opts: [error_logging: true, info_logging: false]
+          opts: [error_logging: true, info_logging: true]
         )
 
       assert_receive {:data, {:text, "hi"}}
@@ -204,6 +204,29 @@ defmodule FreshTest do
       assert log =~ "Casting message failed:"
       assert log =~ "ws://localhost:8080/websocket"
       refute log =~ "%Fresh.Connection{"
+    end
+
+    test "Closed Transport Errors Log at Info Level" do
+      {:ok, pid} =
+        TestClient.start(
+          uri: "ws://localhost:8080/websocket",
+          state: [welcome: "hi", pid: self()],
+          opts: [error_logging: false, info_logging: true]
+        )
+
+      assert_receive {:data, {:text, "hi"}}
+
+      {:connected, %Fresh.Connection{connection: %{socket: socket}}} = :sys.get_state(pid)
+      :gen_tcp.close(socket)
+
+      log =
+        capture_log(fn ->
+          Fresh.send(pid, {:text, "this will fail to send"})
+          assert_receive {:error, {:casting_failed, %Mint.TransportError{reason: :closed}}}
+        end)
+
+      assert log =~ "[info]"
+      assert log =~ "Casting message failed:"
     end
 
     test "Established Connection Logs Include the Endpoint" do
