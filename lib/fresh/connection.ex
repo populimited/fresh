@@ -301,8 +301,8 @@ defmodule Fresh.Connection do
   ###
   ### ===============================================================
 
-  defp handle_error({error_type, _reason} = error, %__MODULE__{} = data, additional \\ []) do
-    log(:error, error_type, data, data.opts)
+  defp handle_error({error_type, reason} = error, %__MODULE__{} = data, additional \\ []) do
+    log(:error, error_type, reason, data.opts)
 
     error
     |> data.module.handle_error(data.inner_state)

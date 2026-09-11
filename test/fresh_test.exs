@@ -1,6 +1,8 @@
 defmodule FreshTest do
   use ExUnit.Case
 
+  import ExUnit.CaptureLog
+
   alias Fresh.TestClient
   alias Fresh.TestServer
 
@@ -156,6 +158,32 @@ defmodule FreshTest do
 
     test "Wait for Ping", _ do
       assert_receive {:control, {:ping, ""}}, 10_000
+    end
+  end
+
+  describe "Error Logging:" do
+    test "Casting Failure Logs the Real Reason Instead of the Connection Struct" do
+      {:ok, pid} =
+        TestClient.start(
+          uri: "ws://localhost:8080/websocket",
+          state: [welcome: "hi", pid: self()],
+          opts: [error_logging: true, info_logging: false]
+        )
+
+      assert_receive {:data, {:text, "hi"}}
+
+      # simulate the underlying socket dying between frames
+      {:connected, %Fresh.Connection{connection: %{socket: socket}}} = :sys.get_state(pid)
+      :gen_tcp.close(socket)
+
+      log =
+        capture_log(fn ->
+          Fresh.send(pid, {:text, "this will fail to send"})
+          assert_receive {:error, {:casting_failed, _reason}}
+        end)
+
+      assert log =~ "Casting message failed:"
+      refute log =~ "%Fresh.Connection{"
     end
   end
 end
